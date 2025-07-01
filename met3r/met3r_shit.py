@@ -325,8 +325,7 @@ class MEt3R(Module):
         images: Float[Tensor, "b 2 c h w"], 
         return_overlap_mask: bool=False, 
         return_score_map: bool=False, 
-        return_projections: bool=False,
-        return_rgb_projections: bool=True
+        return_projections: bool=False
     ) -> Tuple[
             float, 
             Bool[Tensor, "b h w"] | None, 
@@ -384,18 +383,23 @@ class MEt3R(Module):
                 view2 = hr_feat[:, 1, ...]
             else:
                 view1 = images[:, 0, ...]
-                view2 = images[:, 1, ...]
+                view2 = images[:, 1, ...] 
 
             warped_view, mask = self.warp_image(view2, flow)
             rendering = torch.stack([view1, warped_view], dim=1)
 
         else:
             view1 = {"img": images[:, 0, ...], "instance": [""]}
-            view2 = {"img": images[:, 1, ...], "instance": [""]}
+            view2 = {"img": images[:, 1, ...], "instance": [""]} 
             pred1, pred2 = self.backbone_model(view1, view2)
 
+
+            
             ptmps = torch.stack([pred1["pts3d"], pred2["pts3d_in_other_view"]], dim=1).detach()
             conf = torch.stack([pred1["conf"], pred2["conf"]], dim=1).detach()
+
+            ptmps_combined = ptmps.view(b, 2, h, w, 3)  # B, 2, H, W, 3
+            ptmps_combined = ptmps_combined.permute(0, 1, 3, 2, 4).reshape(b, -1, 3)  # B, 2HW
 
             # NOTE: Get canonical point map using the confidences
             confs11 = conf.unsqueeze(-1) - 0.999
@@ -429,18 +433,24 @@ class MEt3R(Module):
             focal = repeat(focal, "b c -> (b k) c", k=2)
             # NOTE: Unproject feature on the point cloud
             ptmps = rearrange(ptmps, "b k h w c -> (b k) (h w) c", b=b, k=2)
+
+
             if self.distance == "cosine":
-                # RGB TEST
                 features = rearrange(hr_feat, "b k c h w -> (b k) (h w) c", k=2)
 
             else:
                 images = (images + 1) / 2
                 features = rearrange(images, "b k c h w-> (b k) (h w) c", k=2)
-
-            images_rgb = (images + 1) / 2
-            rgb_features = rearrange(images_rgb, "b k c h w -> (b k) (h w) c", k=2)
             point_cloud = Pointclouds(points=ptmps, features=features)
-            point_cloud_rgb = Pointclouds(points=ptmps, features=rgb_features)
+
+            # For RGB rendering
+            features_rgb = rearrange(images, "b k c h w -> (b k) (h w) c", k=2)
+            features_rgb = features_rgb[:, :, :3] 
+            point_cloud_rgb = Pointclouds(points=list(ptmps), features=list(features_rgb))
+
+
+
+            
             
             # NOTE: Project and Render
             R = torch.eye(3)
@@ -455,16 +465,19 @@ class MEt3R(Module):
             # Render via point rasterizer to get projected features
             with torch.autocast("cuda", enabled=False):
                 rendering, zbuf = self.render(point_cloud, cameras=cameras, background_color=[-10000] * features.shape[-1])
-                rendering_rgb, zbuf_rgb = self.render(point_cloud_rgb, cameras=cameras,
-                                              background_color=[-10000] * rgb_features.shape[-1])
+                rendering_rgb, zbuf_rgb = self.render(point_cloud_rgb, cameras=cameras, background_color=[-10000]* features_rgb.shape[-1])
             rendering = rearrange(rendering, "(b k) h w c -> b k c h w",  b=b, k=2)
-            rendering_rgb = rearrange(rendering_rgb, "(b k) h w c -> b k c h w", b=b, k=2)
-            
+            rendering_rgb = rearrange(rendering_rgb, "(b k) h w c -> b k c h w",  b=b, k=2)
+            print('11111111111111111111111111111111100')
+            print(f'rendering.shape: {rendering_rgb.shape}')
+
+                        
             # Compute overlapping mask
             non_overlap_mask = (rendering == -10000)
             overlap_mask = (1 - non_overlap_mask.float()).prod(2).prod(1)
             non_overlap_mask_rgb = (rendering_rgb == -10000)
             overlap_mask_rgb = (1 - non_overlap_mask_rgb.float()).prod(2).prod(1)
+            
             # Zero out regions which do not overlap
             rendering[non_overlap_mask] = 0.0
             rendering_rgb[non_overlap_mask_rgb] = 0.0
@@ -472,6 +485,44 @@ class MEt3R(Module):
             # Mask for weighted sum
             mask = overlap_mask
             mask_rgb = overlap_mask_rgb
+
+            '''
+            import matplotlib.pyplot as plt
+
+            # Make sure pixel values are in [0, 1] for plotting
+            # Wähle das erste Bild aus (Index 0) — Form: (3, 256, 256)
+            img_tensor = rendering_rgb[0][0]  # (3, 256, 256)
+
+            # Tensor von (C, H, W) auf (H, W, C) transponieren
+            img_np = img_tensor.permute(1, 2, 0).cpu().numpy()
+
+            # Falls Werte nicht im Bereich [0,1] liegen, ggf. normalisieren oder clippen
+            img_np = img_np.clip(0, 1)
+
+            plt.imshow(img_np)
+            plt.axis('off')
+            plt.show()
+            '''
+
+            import plotly.graph_objs as go
+
+            points = ptmps_combined[0].cpu().numpy()
+            colors = features_rgb[0].cpu().numpy() if 'features_rgb' in locals() else None
+
+            fig = go.Figure(data=[go.Scatter3d(
+                x=points[:,0],
+                y=points[:,1],
+                z=points[:,2],
+                mode='markers',
+                marker=dict(
+                    size=2,
+                    color=colors if colors is not None else 'blue',
+                    opacity=0.8
+                )
+            )])
+
+            fig.show()
+
 
         # NOTE: Uncomment for incorporating occlusion masks along with overlap mask
         # zbuf = rearrange(zbuf, "(b k) ... -> b k ...",  b=b, k=2)
@@ -491,10 +542,7 @@ class MEt3R(Module):
         
         if return_projections:
             outputs.append(rendering)
-
-        if return_rgb_projections:
             outputs.append(rendering_rgb)
-            print(f'rendering_rgb.shape: {rendering_rgb.shape}')
 
         return (*outputs, )
 

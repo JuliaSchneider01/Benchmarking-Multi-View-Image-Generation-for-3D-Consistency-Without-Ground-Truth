@@ -1,0 +1,110 @@
+import torch
+from met3r import MEt3R
+from torchvision import transforms
+from PIL import Image
+
+# === Load and preprocess your images ===
+def load_and_preprocess(image_path, img_size=256):
+    transform = transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),  # Converts to [0, 1]
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Now in [-1, 1]
+    ])
+    image = Image.open(image_path).convert("RGB")
+    return transform(image)
+
+# Replace with your own image paths
+img1 = load_and_preprocess("pool/image_0001_12.jpg")
+img2 = load_and_preprocess("pool/image_0001_14.jpg")
+print("Are tensors identical?", torch.equal(img1, img2))
+
+
+# Stack images: (views=2, channels, H, W)
+pair = torch.stack([img1, img2], dim=0)
+
+# Add batch dimension: (batch=1, views=2, channels, H, W)
+inputs = pair.unsqueeze(0).cuda()
+
+# === Initialize MEt3R ===
+metric = MEt3R(
+    img_size=256,
+    use_norm=True,
+    backbone="dust3r",
+    feature_backbone="dino16",
+    feature_backbone_weights="mhamilton723/FeatUp",
+    upsampler="featup",
+    distance="cosine",
+    freeze=True,
+).cuda()
+
+import matplotlib.pyplot as plt
+
+# === Evaluate ===
+with torch.no_grad():
+    score, *rest = metric(
+        images=inputs,
+        return_overlap_mask=False,
+        return_score_map=False,
+        return_projections=True,
+        return_rgb_projections=True
+    )
+
+
+# Should be between 0.30 - 0.35
+print(score.mean().item())
+
+# Assuming projections is the last item returned
+projections = rest[-1]
+rgb_projections = rest[-2]
+print(type(projections))
+print(projections.shape)
+
+projections = projections.cpu()  # move to CPU
+rgb_projections = rgb_projections.cpu()  # move to CPU
+
+
+import matplotlib.pyplot as plt
+# Assuming projections and rgb_projections are on CPU already
+# Extract first batch
+batch_proj = projections[0]  # shape: (2, 384, 256, 256)
+
+def get_rgb_img(proj_tensor):
+    # proj_tensor shape: (384, 256, 256)
+    rgb = proj_tensor[:3, :, :]  # take first 3 channels
+    rgb = rgb.permute(1, 2, 0).numpy()  # HWC
+    rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-8)
+    return rgb
+
+rgb_img_0 = get_rgb_img(batch_proj[0])
+rgb_img_1 = get_rgb_img(batch_proj[1])
+
+# For rgb_projections, check shape and convert to HWC for plotting
+# Let's assume shape is (2, 3, H, W)
+batch_rgb_proj = rgb_projections[0]  # shape (2, 3, H, W)
+
+dino_proj_img_0 = get_rgb_img(batch_rgb_proj[0])
+dino_proj_img_1 = get_rgb_img(batch_rgb_proj[1])
+
+# Plot all 4 images: projections and rgb_projections side by side
+fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+
+axes[0, 0].imshow(rgb_img_0)
+axes[0, 0].set_title("Projection 0 (RGB)")
+axes[0, 0].axis('off')
+
+axes[0, 1].imshow(rgb_img_1)
+axes[0, 1].set_title("Projection 1 (RGB)")
+axes[0, 1].axis('off')
+
+axes[1, 0].imshow(dino_proj_img_0)
+axes[1, 0].set_title("Projection 0 (DINO)")
+axes[1, 0].axis('off')
+
+axes[1, 1].imshow(dino_proj_img_1)
+axes[1, 1].set_title("Projection 1 (DINO)")
+axes[1, 1].axis('off')
+
+
+
+plt.tight_layout()
+plt.show()
