@@ -45,6 +45,7 @@ with torch.no_grad():
         images=inputs,
         return_overlap_mask=False,
         return_score_map=False,
+        return_score_map_rgb=True,
         return_projections=True,
         return_rgb_projections=True
     )
@@ -52,6 +53,8 @@ with torch.no_grad():
 
 # Should be between 0.30 - 0.35
 print(score.mean().item())
+rgb_score = rest[0]
+print(f'Texture score: {rgb_score.mean().item()}')
 
 # Assuming projections is the last item returned
 projections = rest[-1]

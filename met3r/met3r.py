@@ -187,7 +187,7 @@ class MEt3R(Module):
             print(mask.shape)
         result = [score_map[:, 0]]
         if mask is not None: 
-            # Weighted averate of score map with computed mask
+            # Weighted average of score map with computed mask
             weighted = (score_map * mask[:, None]).sum(-1).sum(-1)  / (mask[:, None].sum(-1).sum(-1) + eps)
             result.append(weighted.mean(1))
 
@@ -325,6 +325,7 @@ class MEt3R(Module):
         images: Float[Tensor, "b 2 c h w"], 
         return_overlap_mask: bool=False, 
         return_score_map: bool=False, 
+        return_score_map_rgb: bool=False, 
         return_projections: bool=False,
         return_rgb_projections: bool=True
     ) -> Tuple[
@@ -481,13 +482,19 @@ class MEt3R(Module):
         
         # NOTE: Compute scores as either feature dissimilarity, RMSE, LPIPS, SSIM, MSE, or PSNR 
         score_map, weighted = self._distance(rendering[:, 0, ...], rendering[:, 1, ...], mask=mask)
+        self.distance = "mse"
+        score_map_rgb, weighted_rgb = self._distance(rendering_rgb[:, 0, ...], rendering_rgb[:, 1, ...], mask=mask_rgb)
 
         outputs = [weighted]
+        outputs.append(weighted_rgb)
         if return_overlap_mask:
             outputs.append(mask)
             
         if return_score_map:
             outputs.append(score_map)
+            
+        if return_score_map_rgb:
+            outputs.append(score_map_rgb)
         
         if return_projections:
             outputs.append(rendering)
