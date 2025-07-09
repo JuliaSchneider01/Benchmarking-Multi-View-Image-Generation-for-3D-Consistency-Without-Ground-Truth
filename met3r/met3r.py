@@ -7,6 +7,7 @@ import os.path as path
 from typing import Literal, Optional, Union
 
 import torch
+import numpy as np
 
 from torch import Tensor
 from torch.nn import Identity, functional as F
@@ -18,6 +19,8 @@ from einops import rearrange, repeat
 from torchvision.models.optical_flow import raft_large
 from torchmetrics.functional.image import structural_similarity_index_measure
 
+from chrislib.data_util import load_image
+from intrinsic.pipeline import load_models, run_pipeline
 
 # Load Pytorch3D
 from pytorch3d.structures import Pointclouds
@@ -183,8 +186,7 @@ class MEt3R(Module):
             score_map = score_map[:, None]
         elif self.distance == "ssim":
             _, score_map = structural_similarity_index_measure(inp1, inp2, return_full_image=True)
-            print(score_map.shape)
-            print(mask.shape)
+
         result = [score_map[:, 0]]
         if mask is not None: 
             # Weighted average of score map with computed mask
@@ -260,7 +262,74 @@ class MEt3R(Module):
         images = images.permute(0, 2, 3, 1)
 
         return images, fragments.zbuf
-    
+
+    def preprocess_iid_images(self, images, k=2):
+        """
+        Normalize input to [0, 1], split from (b, k, ...) to two arrays of shape (b, ...),
+        and return two separate normalized NumPy arrays.
+
+        Args:
+            images (np.ndarray or torch.Tensor): Input image array or tensor.
+            k (int): Number of images per group (fixed to 2 for this version).
+
+        Returns:
+            tuple: Two normalized numpy arrays in [0, 1], each with shape (b, ...)
+        """
+        assert k == 2, "This version only supports k=2"
+        # Convert to NumPy if necessary
+        if isinstance(images, torch.Tensor):
+            images = images.detach().cpu().numpy()
+
+        # images shape: (b, k, C, H, W)
+        assert images.shape[1] == k, f"Expected second dimension to be {k}, got {images.shape[1]}"
+
+        # Normalize each image independently to [0,1]
+        b = images.shape[0]
+        img1 = images[:, 0, ...].astype(np.float32)
+        img2 = images[:, 1, ...].astype(np.float32)
+
+        # Normalize per image in batch
+        for i in range(b):
+            img1_min, img1_max = img1[i].min(), img1[i].max()
+            img2_min, img2_max = img2[i].min(), img2[i].max()
+
+            img1[i] = (img1[i] - img1_min) / max(img1_max - img1_min, 1e-8)
+            img2[i] = (img2[i] - img2_min) / max(img2_max - img2_min, 1e-8)
+
+        print(f'img1.shape: {img1.shape}')
+
+        return img1, img2
+
+    def process_image_pair(self, img1, img2):
+        """
+        Takes two images as PyTorch tensors (CHW or HWC), stacks and normalizes them for input.
+
+        Assumes input images are tensors with values in [-1, 1] or [0, 1], shape [C, H, W] or [H, W, C].
+        Converts to shape (1, 2, C, H, W) and values in [0, 1].
+        """
+        # Ensure both images are tensors
+        if not isinstance(img1, torch.Tensor):
+            img1 = torch.from_numpy(img1)
+        if not isinstance(img2, torch.Tensor):
+            img2 = torch.from_numpy(img2)
+
+        # Convert HWC -> CHW if needed
+        if img1.ndim == 3 and img1.shape[-1] in [1, 3]:
+            img1 = img1.permute(2, 0, 1)
+        if img2.ndim == 3 and img2.shape[-1] in [1, 3]:
+            img2 = img2.permute(2, 0, 1)
+
+        # Stack the images: (k=2, C, H, W)
+        images = torch.stack([img1.float(), img2.float()], dim=0)
+
+        # Normalize from [-1, 1] → [0, 1]
+        images = (images + 1) / 2
+
+        # Add batch dimension: (1, 2, C, H, W)
+        images_rgb = images.unsqueeze(0)
+
+        return images_rgb
+
     def warp_image(self, image: torch.Tensor, flow: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Warp an input image using an optical flow field and compute a mask for gaps.
@@ -327,7 +396,8 @@ class MEt3R(Module):
         return_score_map: bool=False, 
         return_score_map_rgb: bool=False, 
         return_projections: bool=False,
-        return_rgb_projections: bool=True
+        return_rgb_projections: bool=True,
+        return_predictions: bool=True
     ) -> Tuple[
             float, 
             Bool[Tensor, "b h w"] | None, 
@@ -395,9 +465,47 @@ class MEt3R(Module):
             view2 = {"img": images[:, 1, ...], "instance": [""]}
             pred1, pred2 = self.backbone_model(view1, view2)
 
+            import numpy as np
+            import matplotlib.pyplot as plt
+            from sklearn.decomposition import PCA
+
+            # Assume hr_feat has shape [1, 2, 384, 256, 256]
+            batch, k, d, h, w = hr_feat.shape
+
+            # Step 1: Flatten spatial dims and normalize features
+            features = rearrange(hr_feat, "b k d h w -> (b k h w) d")  # [1*2*256*256, 384]
+            features_norm = torch.nn.functional.normalize(features, dim=-1)  # L2 normalize
+
+            # Step 2: Project to RGB using PCA
+            features_np = features_norm.cpu().numpy()
+            pca = PCA(n_components=3)
+            rgb_flat = pca.fit_transform(features_np)  # [2*256*256, 3]
+
+            # Step 3: Reshape back and normalize to [0, 1]
+            rgb = rgb_flat.reshape(batch, k, h, w, 3)  # [1, 2, 256, 256, 3]
+            rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0, 1]
+
+            # Step 4: Plot and save images
+            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+            output_dir = "./dino_feature_visualizations"
+            os.makedirs(output_dir, exist_ok=True)
+
+            for i in range(2):
+                axes[i].imshow(rgb[0, i])
+                axes[i].set_title(f"Image {i + 1}")
+                axes[i].axis("off")
+
+                # Save each image separately
+                out_path = os.path.join(output_dir, f"dino_features_image_{i + 1}.png")
+                plt.imsave(out_path, rgb[0, i])
+
+            plt.suptitle("DINO Features (PCA to RGB)", fontsize=16)
+            plt.tight_layout()
+            plt.show()
+
             ptmps = torch.stack([pred1["pts3d"], pred2["pts3d_in_other_view"]], dim=1).detach()
             conf = torch.stack([pred1["conf"], pred2["conf"]], dim=1).detach()
-
+ 
             # NOTE: Get canonical point map using the confidences
             confs11 = conf.unsqueeze(-1) - 0.999
             canon = (confs11 * ptmps).sum(1) / confs11.sum(1)
@@ -439,9 +547,46 @@ class MEt3R(Module):
                 features = rearrange(images, "b k c h w-> (b k) (h w) c", k=2)
 
             images_rgb = (images + 1) / 2
-            rgb_features = rearrange(images_rgb, "b k c h w -> (b k) (h w) c", k=2)
+
+            # load the models from the given paths
+            iid_models = load_models('v2')
+
+            # load an image (np float array in [0-1])
+            iid_img_orig_1, iid_img_orig_2 = self.preprocess_iid_images(images)
+            iid_img_orig_1 = np.squeeze(iid_img_orig_1, axis=0)  # (3, 256, 256)
+            iid_img_orig_1 = np.transpose(iid_img_orig_1, (1, 2, 0))  # (256, 256, 3)
+            iid_img_orig_2 = np.squeeze(iid_img_orig_2, axis=0)  # (3, 256, 256)
+            iid_img_orig_2 = np.transpose(iid_img_orig_2, (1, 2, 0))  # (256, 256, 3)
+            iid_1 = run_pipeline(iid_models, iid_img_orig_1, base_size=256)
+            iid_2 = run_pipeline(iid_models, iid_img_orig_2, base_size=256)
+
+            albedo_1 = iid_1['hr_alb']
+            albedo_2 = iid_2['hr_alb']
+            import cv2
+
+            def resize_to_256(image):
+                return cv2.resize(image, (256, 256), interpolation=cv2.INTER_LINEAR)
+            import matplotlib.pyplot as plt
+            # Plot the albedo image with axes showing resolution
+            plt.imshow(resize_to_256(albedo_1))
+            plt.title("Albedo")
+            plt.xlabel("Width (pixels)")
+            plt.ylabel("Height (pixels)")
+            plt.grid(False)  # Optional: avoid grid lines
+            plt.show()
+
+            # Resize using cv2
+            albedo_1_resized = torch.from_numpy(resize_to_256(albedo_1)).permute(2, 0, 1).float()  # HWC → CHW
+            albedo_2_resized = torch.from_numpy(resize_to_256(albedo_2)).permute(2, 0, 1).float()
+
+            images_albedo = self.process_image_pair(albedo_1_resized, albedo_2_resized)
+            rgb_features = rearrange(images, "b k c h w -> (b k) (h w) c", k=2)
+
+            albedo_features = rearrange(images_albedo, "b k c h w -> (b k) (h w) c", k=2)
+            device = ptmps.device
+            albedo_features = albedo_features.to(device)
             point_cloud = Pointclouds(points=ptmps, features=features)
-            point_cloud_rgb = Pointclouds(points=ptmps, features=rgb_features)
+            point_cloud_albedo = Pointclouds(points=ptmps, features=albedo_features)
             
             # NOTE: Project and Render
             R = torch.eye(3)
@@ -456,7 +601,7 @@ class MEt3R(Module):
             # Render via point rasterizer to get projected features
             with torch.autocast("cuda", enabled=False):
                 rendering, zbuf = self.render(point_cloud, cameras=cameras, background_color=[-10000] * features.shape[-1])
-                rendering_rgb, zbuf_rgb = self.render(point_cloud_rgb, cameras=cameras,
+                rendering_rgb, zbuf_rgb = self.render(point_cloud_albedo, cameras=cameras,
                                               background_color=[-10000] * rgb_features.shape[-1])
             rendering = rearrange(rendering, "(b k) h w c -> b k c h w",  b=b, k=2)
             rendering_rgb = rearrange(rendering_rgb, "(b k) h w c -> b k c h w", b=b, k=2)
@@ -501,6 +646,10 @@ class MEt3R(Module):
 
         if return_rgb_projections:
             outputs.append(rendering_rgb)
+            print(f'rendering_rgb.shape: {rendering_rgb.shape}')
+        if return_predictions:
+            outputs.append(pred1["conf"])
+            outputs.append(pred2["conf"])
             print(f'rendering_rgb.shape: {rendering_rgb.shape}')
 
         return (*outputs, )

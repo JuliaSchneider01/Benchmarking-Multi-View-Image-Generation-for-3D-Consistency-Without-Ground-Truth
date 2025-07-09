@@ -14,8 +14,8 @@ def load_and_preprocess(image_path, img_size=256):
     return transform(image)
 
 # Replace with your own image paths
-img1 = load_and_preprocess("pool/image_0001_12.jpg")
-img2 = load_and_preprocess("pool/image_0001_14.jpg")
+img1 = load_and_preprocess("/home/schneiderju/Downloads/FML_hard(1) (2)/FML_hard/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004.png")
+img2 = load_and_preprocess("/home/schneiderju/Downloads/FML_hard(1) (2)/FML_hard/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004_hue.png")
 print("Are tensors identical?", torch.equal(img1, img2))
 
 
@@ -47,7 +47,8 @@ with torch.no_grad():
         return_score_map=False,
         return_score_map_rgb=True,
         return_projections=True,
-        return_rgb_projections=True
+        return_rgb_projections=True,
+        return_predictions=True
     )
 
 
@@ -57,8 +58,8 @@ rgb_score = rest[0]
 print(f'Texture score: {rgb_score.mean().item()}')
 
 # Assuming projections is the last item returned
-projections = rest[-1]
-rgb_projections = rest[-2]
+projections = rest[-3]
+rgb_projections = rest[-4]
 print(type(projections))
 print(projections.shape)
 
@@ -110,4 +111,31 @@ axes[1, 1].axis('off')
 
 
 plt.tight_layout()
+plt.show()
+
+
+def to_numpy_img(tensor):
+    if hasattr(tensor, 'cpu'):
+        tensor = tensor.cpu()
+    img = tensor.numpy() if hasattr(tensor, 'numpy') else tensor
+    if img.shape[0] == 3 or img.shape[0] == 4:  # channels first -> convert to HWC
+        img = img.transpose(1, 2, 0)
+    return img
+
+
+print(f'dino shape image: {rest[-2].shape}')
+
+img1 = to_numpy_img(rest[-2].squeeze(0))
+img2 = to_numpy_img(rest[-1].squeeze(0))
+
+# Plotting
+fig, axs = plt.subplots(1, 2, figsize=(15, 5))
+
+axs[0].imshow(img1)
+axs[0].set_title('pred1')
+axs[0].axis('off')
+
+axs[1].imshow(img2)
+axs[1].set_title('pred2')
+axs[1].axis('off')
 plt.show()

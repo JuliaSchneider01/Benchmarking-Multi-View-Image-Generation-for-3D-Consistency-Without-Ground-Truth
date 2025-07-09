@@ -167,3 +167,6 @@ cython_debug/
 test/
 pool/
 nerf_synthetic/
+dino_feature_visualizations/
+venv_name/
+
