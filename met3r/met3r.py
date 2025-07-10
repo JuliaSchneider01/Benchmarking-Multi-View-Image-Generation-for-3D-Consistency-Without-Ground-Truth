@@ -567,13 +567,22 @@ class MEt3R(Module):
             def resize_to_256(image):
                 return cv2.resize(image, (256, 256), interpolation=cv2.INTER_LINEAR)
             import matplotlib.pyplot as plt
-            # Plot the albedo image with axes showing resolution
-            plt.imshow(resize_to_256(albedo_1))
-            plt.title("Albedo")
-            plt.xlabel("Width (pixels)")
-            plt.ylabel("Height (pixels)")
-            plt.grid(False)  # Optional: avoid grid lines
-            plt.show()
+            # Output directory
+            output_dir = "./albedo"
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Function to save an image without axes
+            def save_albedo_image(image, filename):
+                fig, ax = plt.subplots()
+                ax.imshow(resize_to_256(image))
+                ax.axis('off')
+                output_path = os.path.join(output_dir, filename)
+                plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
+                plt.close(fig)
+
+            # Save both images
+            save_albedo_image(albedo_1, "albedo_image_1.png")
+            save_albedo_image(albedo_2, "albedo_image_2.png")
 
             # Resize using cv2
             albedo_1_resized = torch.from_numpy(resize_to_256(albedo_1)).permute(2, 0, 1).float()  # HWC → CHW
@@ -604,7 +613,71 @@ class MEt3R(Module):
                 rendering_rgb, zbuf_rgb = self.render(point_cloud_albedo, cameras=cameras,
                                               background_color=[-10000] * rgb_features.shape[-1])
             rendering = rearrange(rendering, "(b k) h w c -> b k c h w",  b=b, k=2)
+
+            """
+            PLOTS PROJECTED FEATURES
+            # Assume hr_feat has shape [1, 2, 384, 256, 256]
+            batch, k, d, h, w = rendering.shape
+
+            # Step 1: Flatten spatial dims and normalize features
+            features_proj = rearrange(rendering, "b k d h w -> (b k h w) d")  # [1*2*256*256, 384]
+            features_norm_proj= torch.nn.functional.normalize(features_proj, dim=-1)  # L2 normalize
+
+            # Step 2: Project to RGB using PCA
+            features_np = features_norm_proj.cpu().numpy()
+            pca = PCA(n_components=3)
+            rgb_flat = pca.fit_transform(features_np)  # [2*256*256, 3]
+
+            # Step 3: Reshape back and normalize to [0, 1]
+            rgb = rgb_flat.reshape(batch, k, h, w, 3)  # [1, 2, 256, 256, 3]
+            rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0, 1]
+
+            # Step 4: Plot and save images
+            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+            output_dir = "./dino_feature_projection"
+            os.makedirs(output_dir, exist_ok=True)
+
+            for i in range(2):
+                axes[i].imshow(rgb[0, i])
+                axes[i].set_title(f"Image {i + 1}")
+                axes[i].axis("off")
+
+                # Save each image separately
+                out_path = os.path.join(output_dir, f"dino_features_projection_{i + 1}.png")
+                plt.imsave(out_path, rgb[0, i])
+
+            plt.suptitle("DINO Features (PCA to RGB) projection", fontsize=16)
+            plt.tight_layout()
+            plt.show()
+            
+            """
+
+            FML_hard /
+            albedo /
+            dino_feature_projection /
+            images_report /
+            scoremaps /
+
             rendering_rgb = rearrange(rendering_rgb, "(b k) h w c -> b k c h w", b=b, k=2)
+
+
+            # Save function
+            def save_albedo_image(image_tensor, filename):
+                # Convert to NumPy and transpose to (H, W, C)
+                image_np = image_tensor.detach().cpu().numpy().transpose(1, 2, 0)
+                image_np = np.clip(image_np, 0, 1)  # Optional: clip to valid image range
+                fig, ax = plt.subplots()
+                ax.imshow(image_np)
+                ax.axis('off')
+                output_path = os.path.join(output_dir, filename)
+                plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
+                plt.close(fig)
+
+            # Save both images
+            tensor = rendering_rgb.squeeze(0)  # Now shape: [2, 3, 256, 256]
+            save_albedo_image(tensor[0], "albedo_proj_1.png")
+            save_albedo_image(tensor[1], "albedo_proj_2.png")
+
             
             # Compute overlapping mask
             non_overlap_mask = (rendering == -10000)
@@ -646,11 +719,10 @@ class MEt3R(Module):
 
         if return_rgb_projections:
             outputs.append(rendering_rgb)
-            print(f'rendering_rgb.shape: {rendering_rgb.shape}')
+
         if return_predictions:
             outputs.append(pred1["conf"])
             outputs.append(pred2["conf"])
-            print(f'rendering_rgb.shape: {rendering_rgb.shape}')
 
         return (*outputs, )
 

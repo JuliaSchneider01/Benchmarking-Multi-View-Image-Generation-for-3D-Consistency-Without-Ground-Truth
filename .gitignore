@@ -169,4 +169,9 @@ pool/
 nerf_synthetic/
 dino_feature_visualizations/
 venv_name/
+FML_hard/
+albedo/
+dino_feature_projection/
+images_report/
+scoremaps/
 

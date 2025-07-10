@@ -14,8 +14,8 @@ def load_and_preprocess(image_path, img_size=256):
     return transform(image)
 
 # Replace with your own image paths
-img1 = load_and_preprocess("/home/schneiderju/Downloads/FML_hard(1) (2)/FML_hard/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004.png")
-img2 = load_and_preprocess("/home/schneiderju/Downloads/FML_hard(1) (2)/FML_hard/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004_hue.png")
+img1 = load_and_preprocess("/home/schneiderju/3DCV/met3r/images_report/261961000.jpg.jpg")
+img2 = load_and_preprocess("/home/schneiderju/3DCV/met3r/images_report/263663000.jpg.jpg")
 print("Are tensors identical?", torch.equal(img1, img2))
 
 
@@ -53,15 +53,13 @@ with torch.no_grad():
 
 
 # Should be between 0.30 - 0.35
-print(score.mean().item())
+print(f'Geometric score: {score.mean().item()}')
 rgb_score = rest[0]
 print(f'Texture score: {rgb_score.mean().item()}')
 
 # Assuming projections is the last item returned
 projections = rest[-3]
 rgb_projections = rest[-4]
-print(type(projections))
-print(projections.shape)
 
 projections = projections.cpu()  # move to CPU
 rgb_projections = rgb_projections.cpu()  # move to CPU
@@ -122,8 +120,7 @@ def to_numpy_img(tensor):
         img = img.transpose(1, 2, 0)
     return img
 
-
-print(f'dino shape image: {rest[-2].shape}')
+print(f'remdered dino features shape: {rest[-3].shape}')
 
 img1 = to_numpy_img(rest[-2].squeeze(0))
 img2 = to_numpy_img(rest[-1].squeeze(0))
