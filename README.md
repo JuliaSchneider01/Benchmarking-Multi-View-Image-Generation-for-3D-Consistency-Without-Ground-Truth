@@ -34,11 +34,11 @@ Evaluating the 3D consistency of multi-view image generation systems remains a s
 
 ## 📌 Dependencies
 
-- Python 3.10.18
-- PyTorch: 2.7.1+cu118
-- CUDA: 11.8
-- PyTorch3D: 0.7.8
-- FeatUp: 0.1.2
+    - Python 3.10.18
+    - PyTorch: 2.7.1+cu118
+    - CUDA: 11.8
+    - PyTorch3D: 0.7.8
+    - FeatUp: 0.1.2
 
 NOTE: Pytorch3D and FeatUp are automatically installed alongside **MEt3R**.
 
