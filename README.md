@@ -1,24 +1,7 @@
 
 # Benchmarking Multi-View Image Generation for 3D Consistency Without Ground Truth 
-<a href="https://mohammadasim98.github.io">Mohammad Asim</a><sup>1</sup>, <a href="https://geometric-rl.mpi-inf.mpg.de/people/Wewer.html">Christopher Wewer</a><sup>1</sup>, <a href="https://wimmerth.github.io">Thomas Wimmer</a><sup>1, 2</sup>, <a href="https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/people/bernt-schiele/">Bernt Schiele</a><sup>1</sup>,  <a href="https://geometric-rl.mpi-inf.mpg.de/people/lenssen.html">Jan Eric Lenssen</a><sup>1</sup>
+Phillip Bauer, Julia Schneider
 
-*<sup>1</sup>Max Planck Institute for Informatics, Saarland Informatics Campus, <sup>2</sup>ETH Zurich*
-
-<h4 align="left">
-<a href="https://geometric-rl.mpi-inf.mpg.de/met3r/">Project Page</a>
-</h4>
-
-### `TL;DR: A differentiable metric to measure multi-view consistency between an image pair`. 
-
-### 📣 News
-
-- **15.04.2025** - Updates:
-  - Added optical flow-based warping backbone using [`RAFT`](https://arxiv.org/abs/2003.12039).
-  - Added `psnr`, `ssim`, `lpips`, `rmse`, and `mse` metrics on warped RGB images instead of feature maps.
-  - Added `nearest`, `bilinear` and `bicubic` upsampling methods.
-  - Refactored codebase structure.  
-- **26.02.2025** - Accepted to [`CVPR 2025`](https://cvpr.thecvf.com/) 🎉!
-- **10.01.2025** - Initial code releases.
 
 ## 🔍 Method Overview 
 <div align="center">
