@@ -14,8 +14,8 @@ def load_and_preprocess(image_path, img_size=256):
     return transform(image)
 
 # Replace with your own image paths
-img1 = load_and_preprocess("/home/schneiderju/3DCV/met3r/images_report/261961000.jpg.jpg")
-img2 = load_and_preprocess("/home/schneiderju/3DCV/met3r/images_report/263663000.jpg.jpg")
+img1 = load_and_preprocess("/home/schneiderju/3DCV/met3r/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004_hue.png")
+img2 = load_and_preprocess("/home/schneiderju/3DCV/met3r/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004.png")
 print("Are tensors identical?", torch.equal(img1, img2))
 
 
