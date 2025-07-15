@@ -8,6 +8,7 @@ from typing import Literal, Optional, Union
 
 import torch
 import numpy as np
+import cv2
 
 from torch import Tensor
 from torch.nn import Identity, functional as F
@@ -446,6 +447,26 @@ class MEt3R(Module):
         images = rearrange(images, "(b k) ... -> b k ...", k=2)
         images = 2 * images - 1
 
+
+
+            
+        # Extract feature maps for the pair (assume B = 1 for simplicity)
+        feat1 = hr_feat[0, 0]  # shape: [C, H, W]
+        feat2 = hr_feat[0, 1]  # shape: [C, H, W]
+
+        # Normalize features along channel dimension
+        feat1 = F.normalize(feat1, dim=0)  # shape: [C, H, W]
+        feat2 = F.normalize(feat2, dim=0)
+
+        # Compute per-pixel cosine similarity
+        cos_sim_map = (feat1 * feat2).sum(dim=0)  # shape: [H, W]
+
+        # Compute mean cosine similarity over all pixels
+        mean_cos_sim = cos_sim_map.mean().item()
+
+        print(f"Mean cosine similarity between image 1 and 2: {mean_cos_sim:.4f}")
+
+
         # NOTE: Apply Backbone MASt3R/DUSt3R/RAFT to warp one view to the other and compute overlap masks
         if self.backbone == "raft":
             flow = self.backbone_model(images[:, 0, ...], images[:, 1, ...])[-1]
@@ -465,44 +486,6 @@ class MEt3R(Module):
             view2 = {"img": images[:, 1, ...], "instance": [""]}
             pred1, pred2 = self.backbone_model(view1, view2)
 
-            import numpy as np
-            import matplotlib.pyplot as plt
-            from sklearn.decomposition import PCA
-
-            # Assume hr_feat has shape [1, 2, 384, 256, 256]
-            batch, k, d, h, w = hr_feat.shape
-
-            # Step 1: Flatten spatial dims and normalize features
-            features = rearrange(hr_feat, "b k d h w -> (b k h w) d")  # [1*2*256*256, 384]
-            features_norm = torch.nn.functional.normalize(features, dim=-1)  # L2 normalize
-
-            # Step 2: Project to RGB using PCA
-            features_np = features_norm.cpu().numpy()
-            pca = PCA(n_components=3)
-            rgb_flat = pca.fit_transform(features_np)  # [2*256*256, 3]
-
-            # Step 3: Reshape back and normalize to [0, 1]
-            rgb = rgb_flat.reshape(batch, k, h, w, 3)  # [1, 2, 256, 256, 3]
-            rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0, 1]
-
-            # Step 4: Plot and save images
-            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-            output_dir = "./dino_feature_visualizations"
-            os.makedirs(output_dir, exist_ok=True)
-
-            for i in range(2):
-                axes[i].imshow(rgb[0, i])
-                axes[i].set_title(f"Image {i + 1}")
-                axes[i].axis("off")
-
-                # Save each image separately
-                out_path = os.path.join(output_dir, f"dino_features_image_{i + 1}.png")
-                plt.imsave(out_path, rgb[0, i])
-
-            plt.suptitle("DINO Features (PCA to RGB)", fontsize=16)
-            plt.tight_layout()
-            plt.show()
-
             ptmps = torch.stack([pred1["pts3d"], pred2["pts3d_in_other_view"]], dim=1).detach()
             conf = torch.stack([pred1["conf"], pred2["conf"]], dim=1).detach()
  
@@ -512,7 +495,6 @@ class MEt3R(Module):
             
             # Define principal point
             pp = torch.tensor([w /2 , h / 2], device=canon.device)
-            
             
             # NOTE: Estimating fx and fy for a given canonical point map
             B, H, W, THREE = canon.shape
@@ -562,27 +544,10 @@ class MEt3R(Module):
 
             albedo_1 = iid_1['hr_alb']
             albedo_2 = iid_2['hr_alb']
-            import cv2
+
 
             def resize_to_256(image):
                 return cv2.resize(image, (256, 256), interpolation=cv2.INTER_LINEAR)
-            import matplotlib.pyplot as plt
-            # Output directory
-            output_dir = "./albedo"
-            os.makedirs(output_dir, exist_ok=True)
-
-            # Function to save an image without axes
-            def save_albedo_image(image, filename):
-                fig, ax = plt.subplots()
-                ax.imshow(resize_to_256(image))
-                ax.axis('off')
-                output_path = os.path.join(output_dir, filename)
-                plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
-                plt.close(fig)
-
-            # Save both images
-            save_albedo_image(albedo_1, "albedo_image_1.png")
-            save_albedo_image(albedo_2, "albedo_image_2.png")
 
             # Resize using cv2
             albedo_1_resized = torch.from_numpy(resize_to_256(albedo_1)).permute(2, 0, 1).float()  # HWC → CHW
@@ -613,72 +578,8 @@ class MEt3R(Module):
                 rendering_rgb, zbuf_rgb = self.render(point_cloud_albedo, cameras=cameras,
                                               background_color=[-10000] * rgb_features.shape[-1])
             rendering = rearrange(rendering, "(b k) h w c -> b k c h w",  b=b, k=2)
-
-            """
-            PLOTS PROJECTED FEATURES
-            # Assume hr_feat has shape [1, 2, 384, 256, 256]
-            batch, k, d, h, w = rendering.shape
-
-            # Step 1: Flatten spatial dims and normalize features
-            features_proj = rearrange(rendering, "b k d h w -> (b k h w) d")  # [1*2*256*256, 384]
-            features_norm_proj= torch.nn.functional.normalize(features_proj, dim=-1)  # L2 normalize
-
-            # Step 2: Project to RGB using PCA
-            features_np = features_norm_proj.cpu().numpy()
-            pca = PCA(n_components=3)
-            rgb_flat = pca.fit_transform(features_np)  # [2*256*256, 3]
-
-            # Step 3: Reshape back and normalize to [0, 1]
-            rgb = rgb_flat.reshape(batch, k, h, w, 3)  # [1, 2, 256, 256, 3]
-            rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0, 1]
-
-            # Step 4: Plot and save images
-            fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-            output_dir = "./dino_feature_projection"
-            os.makedirs(output_dir, exist_ok=True)
-
-            for i in range(2):
-                axes[i].imshow(rgb[0, i])
-                axes[i].set_title(f"Image {i + 1}")
-                axes[i].axis("off")
-
-                # Save each image separately
-                out_path = os.path.join(output_dir, f"dino_features_projection_{i + 1}.png")
-                plt.imsave(out_path, rgb[0, i])
-
-            plt.suptitle("DINO Features (PCA to RGB) projection", fontsize=16)
-            plt.tight_layout()
-            plt.show()
-            
-            """
-
-            FML_hard /
-            albedo /
-            dino_feature_projection /
-            images_report /
-            scoremaps /
-
             rendering_rgb = rearrange(rendering_rgb, "(b k) h w c -> b k c h w", b=b, k=2)
 
-
-            # Save function
-            def save_albedo_image(image_tensor, filename):
-                # Convert to NumPy and transpose to (H, W, C)
-                image_np = image_tensor.detach().cpu().numpy().transpose(1, 2, 0)
-                image_np = np.clip(image_np, 0, 1)  # Optional: clip to valid image range
-                fig, ax = plt.subplots()
-                ax.imshow(image_np)
-                ax.axis('off')
-                output_path = os.path.join(output_dir, filename)
-                plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
-                plt.close(fig)
-
-            # Save both images
-            tensor = rendering_rgb.squeeze(0)  # Now shape: [2, 3, 256, 256]
-            save_albedo_image(tensor[0], "albedo_proj_1.png")
-            save_albedo_image(tensor[1], "albedo_proj_2.png")
-
-            
             # Compute overlapping mask
             non_overlap_mask = (rendering == -10000)
             overlap_mask = (1 - non_overlap_mask.float()).prod(2).prod(1)
@@ -700,7 +601,9 @@ class MEt3R(Module):
         
         # NOTE: Compute scores as either feature dissimilarity, RMSE, LPIPS, SSIM, MSE, or PSNR 
         score_map, weighted = self._distance(rendering[:, 0, ...], rendering[:, 1, ...], mask=mask)
-        self.distance = "mse"
+        self.distance = "lpips"
+        self.lpips = LPIPS(spatial=True)
+        self.lpips = self.lpips.to(ptmps.device)
         score_map_rgb, weighted_rgb = self._distance(rendering_rgb[:, 0, ...], rendering_rgb[:, 1, ...], mask=mask_rgb)
 
         outputs = [weighted]
