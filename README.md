@@ -5,7 +5,7 @@ Phillip Bauer, Julia Schneider
 
 ## 🔍 Method Overview 
 <div align="center">
-  <img src="assets/method_overview.jpg" width="800"/>
+  <img src="assets/pipeline.png" width="800"/>
 </div>
 
 
