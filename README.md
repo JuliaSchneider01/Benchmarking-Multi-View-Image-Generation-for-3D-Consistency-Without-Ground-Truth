@@ -30,8 +30,6 @@ Tested with *CUDA 11.8*, *PyTorch 2.7.1*, *Python 3.10*
 
 ## 💡 Example Usage
 
-Simply import and use **MEt3R** in your codebase as follows.
-
 ```python
     import torch
     from met3r import MEt3R
