@@ -1,5 +1,5 @@
 
-# `MEt3R`: Measuring Multi-View Consistency in Generated Images [CVPR 2025] 
+# Benchmarking Multi-View Image Generation for 3D Consistency Without Ground Truth 
 <a href="https://mohammadasim98.github.io">Mohammad Asim</a><sup>1</sup>, <a href="https://geometric-rl.mpi-inf.mpg.de/people/Wewer.html">Christopher Wewer</a><sup>1</sup>, <a href="https://wimmerth.github.io">Thomas Wimmer</a><sup>1, 2</sup>, <a href="https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/people/bernt-schiele/">Bernt Schiele</a><sup>1</sup>,  <a href="https://geometric-rl.mpi-inf.mpg.de/people/lenssen.html">Jan Eric Lenssen</a><sup>1</sup>
 
 *<sup>1</sup>Max Planck Institute for Informatics, Saarland Informatics Campus, <sup>2</sup>ETH Zurich*
@@ -34,11 +34,11 @@ Evaluating the 3D consistency of multi-view image generation systems remains a s
 
 ## 📌 Dependencies
 
-    - Python >= 3.6
-    - PyTorch >= 2.1.0
-    - CUDA >= 11.3
-    - PyTorch3D >= 0.7.5
-    - FeatUp >= 0.1.1
+- Python 3.10.18
+- PyTorch: 2.7.1+cu118
+- CUDA: 11.8
+- PyTorch3D: 0.7.8
+- FeatUp: 0.1.2
 
 NOTE: Pytorch3D and FeatUp are automatically installed alongside **MEt3R**.
 
