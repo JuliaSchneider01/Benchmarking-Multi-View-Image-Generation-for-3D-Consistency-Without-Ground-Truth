@@ -1,11 +1,11 @@
 
 # Benchmarking Multi-View Image Generation for 3D Consistency Without Ground Truth 
-Phillip Bauer, Julia Schneider
+Philipp Bauer, Julia Schneider
 
 
 ## 🔍 Method Overview 
 <div align="center">
-  <img src="assets/pipeline.png" width="800"/>
+  <img src="assets/Pipeline.png" width="800"/>
 </div>
 
 
