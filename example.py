@@ -36,8 +36,6 @@ metric = MEt3R(
     freeze=True,
 ).cuda()
 
-import matplotlib.pyplot as plt
-
 # === Evaluate ===
 with torch.no_grad():
     score, *rest = metric(
