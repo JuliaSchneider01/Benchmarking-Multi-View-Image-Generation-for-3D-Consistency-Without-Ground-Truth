@@ -1,147 +1,94 @@
 
-# `MEt3R`: Measuring Multi-View Consistency in Generated Images [CVPR 2025] 
-<a href="https://mohammadasim98.github.io">Mohammad Asim</a><sup>1</sup>, <a href="https://geometric-rl.mpi-inf.mpg.de/people/Wewer.html">Christopher Wewer</a><sup>1</sup>, <a href="https://wimmerth.github.io">Thomas Wimmer</a><sup>1, 2</sup>, <a href="https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/people/bernt-schiele/">Bernt Schiele</a><sup>1</sup>,  <a href="https://geometric-rl.mpi-inf.mpg.de/people/lenssen.html">Jan Eric Lenssen</a><sup>1</sup>
+# Benchmarking Multi-View Image Generation for 3D Consistency Without Ground Truth 
+Philipp Bauer, Julia Schneider
 
-*<sup>1</sup>Max Planck Institute for Informatics, Saarland Informatics Campus, <sup>2</sup>ETH Zurich*
-
-<h4 align="left">
-<a href="https://geometric-rl.mpi-inf.mpg.de/met3r/">Project Page</a>
-</h4>
-
-### `TL;DR: A differentiable metric to measure multi-view consistency between an image pair`. 
-
-### 📣 News
-
-- **15.04.2025** - Updates:
-  - Added optical flow-based warping backbone using [`RAFT`](https://arxiv.org/abs/2003.12039).
-  - Added `psnr`, `ssim`, `lpips`, `rmse`, and `mse` metrics on warped RGB images instead of feature maps.
-  - Added `nearest`, `bilinear` and `bicubic` upsampling methods.
-  - Refactored codebase structure.  
-- **26.02.2025** - Accepted to [`CVPR 2025`](https://cvpr.thecvf.com/) 🎉!
-- **10.01.2025** - Initial code releases.
 
 ## 🔍 Method Overview 
 <div align="center">
-  <img src="assets/method_overview.jpg" width="800"/>
+  <img src="assets/Pipeline.png" width="600"/>
 </div>
 
-**MEt3R** evaluates the consistency between images $\mathbf{I}_1$ and $\mathbf{I}_2$. Given such a pair, we apply **DUSt3R** to obtain dense 3D point maps $\mathbf{X}_1$ and $\mathbf{X}_2$. These point maps are used to project upscaled **DINO** features $\mathbf{F}_1$, $\mathbf{F}_2$ into the coordinate frame of $\mathbf{I}_1$, via unprojecting and rendering. We compare the resulting feature maps $\hat{\mathbf{F}}_1$ and $\hat{\mathbf{F}}_2$ in pixel space to obtain similarity $S(\mathbf{I}_1,\mathbf{I}_2)$.
 
-## 📋 Contents
-- [📓 Abstract](#-abstract)
-- [📌 Dependencies](#-dependencies)
-- [🛠️ Quick Setup](#️-quick-setup)
-- [📣 Example Usage](#-example-usage)
-- [👷 Manual Install](#-manual-install)
-- [📘 Citation](#-citation)
 
-## 📓 Abstract
-We introduce **MEt3R** a metric for multi-view consistency in generated images. Large-scale generative models for multi-view image generation are rapidly advancing the field of 3D inference from sparse observations. However, due to the nature of generative modeling, traditional reconstruction metrics are not suitable to measure the quality of generated outputs and metrics that are independent of the sampling procedure are desperately needed. In this work, we specifically address the aspect of consistency between generated multi-view images, which can be evaluated independently of the specific scene. Our approach uses **DUSt3R** to obtain dense 3D reconstructions from image pairs in a feed-forward manner, which are used to warp image contents from one view into the other. Then, feature maps of these images are compared to obtain a similarity score that is invariant to view-dependent effects. Using **MEt3R**, we evaluate the consistency of a large set of previous methods for novel view and video generation, including our open, multi-view latent diffusion model.
+## Abstract
+Evaluating the 3D consistency of multi-view image generation systems remains a significant challenge, especially without access to ground truth 3D data. Traditional metrics often fall short in generative settings where multiple plausible outputs can exist. In this project, we propose a novel benchmarking methodology that separately assesses geometric and texture consistency across synthesized views, without relying on ground truth. Building upon recent advances such as MEt3R and leveraging self-supervised features (e.g., DINO), our pipeline employs feature-based comparisons and view-alignment techniques to robustly quantify multi-view coherence in both geometry and appearance. We validate the method across several generative models, demonstrating its effectiveness in identifying perceptual and structural inconsistencies. This approach offers a scalable, interpretable alternative for evaluating 3D-aware image generation and paves the way for standardized benchmarking in this field.
 
 
 
 ## 📌 Dependencies
 
-    - Python >= 3.6
-    - PyTorch >= 2.1.0
-    - CUDA >= 11.3
-    - PyTorch3D >= 0.7.5
-    - FeatUp >= 0.1.1
+    - Python 3.10.18
+    - PyTorch: 2.7.1+cu118
+    - CUDA: 11.8
+    - PyTorch3D: 0.7.8
+    - FeatUp: 0.1.2
 
 NOTE: Pytorch3D and FeatUp are automatically installed alongside **MEt3R**.
 
-Tested with *CUDA 11.8*, *PyTorch 2.4.1*, *Python 3.10*
-
-## 🛠️ Quick Setup
-Simply install **MEt3R** using the following command inside a bash terminal assuming prequisites are aleady installed and working.
-```bash
-pip install git+https://github.com/mohammadasim98/met3r
-```
+Tested with *CUDA 11.8*, *PyTorch 2.7.1*, *Python 3.10*
 
 
 ## 💡 Example Usage
 
-Simply import and use **MEt3R** in your codebase as follows.
-
 ```python
-import torch
+    import torch
 from met3r import MEt3R
+from torchvision import transforms
+from PIL import Image
 
-IMG_SIZE = 256
+# === Load and preprocess your images ===
+def load_and_preprocess(image_path, img_size=256):
+    transform = transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),  # Converts to [0, 1]
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Now in [-1, 1]
+    ])
+    image = Image.open(image_path).convert("RGB")
+    return transform(image)
 
-# Initialize MEt3R
+# Replace with your own image paths
+img1 = load_and_preprocess("/home/schneiderju/3DCV/met3r/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004_hue.png")
+img2 = load_and_preprocess("/home/schneiderju/3DCV/met3r/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004.png")
+
+
+# Stack images: (views=2, channels, H, W)
+pair = torch.stack([img1, img2], dim=0)
+
+# Add batch dimension: (batch=1, views=2, channels, H, W)
+inputs = pair.unsqueeze(0).cuda()
+
+# === Initialize MEt3R ===
 metric = MEt3R(
-    img_size=IMG_SIZE, # Default to 256, set to `None` to use the input resolution on the fly!
-    use_norm=True, # Default to True 
-    backbone="mast3r", # Default to MASt3R, select from ["mast3r", "dust3r", "raft"]
-    feature_backbone="dino16", # Default to DINO, select from ["dino16", "dinov2", "maskclip", "vit", "clip", "resnet50"]
-    feature_backbone_weights="mhamilton723/FeatUp", # Default
-    upsampler="featup", # Default to FeatUP upsampling, select from ["featup", "nearest", "bilinear", "bicubic"]
-    distance="cosine", # Default to feature similarity, select from ["cosine", "lpips", "rmse", "psnr", "mse", "ssim"]
-    freeze=True, # Default to True
+    img_size=256,
+    use_norm=True,
+    backbone="dust3r",
+    feature_backbone="dino16",
+    feature_backbone_weights="mhamilton723/FeatUp",
+    upsampler="featup",
+    distance="cosine",
+    freeze=True,
 ).cuda()
 
-# Prepare inputs of shape (batch, views, channels, height, width): views must be 2
-# RGB range must be in [-1, 1]
-# Reduce the batch size in case of CUDA OOM
-inputs = torch.randn((10, 2, 3, IMG_SIZE, IMG_SIZE)).cuda()
-inputs = inputs.clip(-1, 1)
+import matplotlib.pyplot as plt
 
-# Evaluate MEt3R
-score, *_ = metric(
-    images=inputs, 
-    return_overlap_mask=False, # Default 
-    return_score_map=False, # Default 
-    return_projections=False # Default 
-)
+# === Evaluate ===
+with torch.no_grad():
+    score, *rest = metric(
+        images=inputs,
+        return_overlap_mask=False,
+        return_score_map=False,
+        return_score_map_rgb=True,
+        return_projections=True,
+        return_rgb_projections=True,
+        return_predictions=True
+    )
 
-# Should be between 0.25 - 0.35
-print(score.mean().item())
 
-# Clear up GPU memory
-torch.cuda.empty_cache()
+# Should be between 0.30 - 0.35
+print(f'Geometric score: {score.mean().item()}')
+rgb_score = rest[0]
+print(f'Texture score: {rgb_score.mean().item()}')
+
+    
 ```
 
-Checkout ```example.ipynb``` for more demo examples!
-
-## 👷 Manual Install
-
-Additionally **MEt3R** can also be installed manually in a local development environment. 
-#### Install Prerequisites
-```bash
-pip install -r requirements.txt
-```
-#### Installing **FeatUp**
-**MEt3R** relies on **FeatUp** to generate high resolution feature maps for the input images. Install **FeatUp** using the following command. 
-
-```bash
-pip install git+https://github.com/mhamilton723/FeatUp
-```
-Refer to [FeatUp](https://github.com/mhamilton723/FeatUp) for more details.
-
-#### Installing **Pytorch3D**
-**MEt3R** requires Pytorch3D to perform point projection and rasterization. Install it via the following command.  
-```bash 
-pip install git+https://github.com/facebookresearch/pytorch3d.git
-```
-In case of issues related to installing and building Pytorch3D, refer to [Pytorch3d](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md) for more details. 
-
-#### Installing **DUSt3R**
-At the core of **MEt3R** lies [DUSt3R](https://github.com/naver/dust3r) which is used to generate the 3D point maps for feature unprojection and rasterization. We adopt **DUSt3R** as a submodule which can be downloaded as follows:
-```bash
-git submodule update --init --recursive
-```
-
-
-## 📘 Citation
-When using **MEt3R** in your project, consider citing our work as follows.
-<section class="section" id="BibTeX">
-  <div class="container is-max-desktop content">
-    <pre><code>@inproceedings{asim24met3r,
-    title = {MEt3R: Measuring Multi-View Consistency in Generated Images},
-    author = {Asim, Mohammad and Wewer, Christopher and Wimmer, Thomas and Schiele, Bernt and Lenssen, Jan Eric},
-    booktitle = {Computer Vision and Pattern Recognition ({CVPR})},
-    year = {2024},
-}</code></pre>
-  </div>
-</section>
