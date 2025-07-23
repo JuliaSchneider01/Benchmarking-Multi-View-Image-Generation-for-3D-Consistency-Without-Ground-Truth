@@ -297,7 +297,6 @@ class MEt3R(Module):
             img1[i] = (img1[i] - img1_min) / max(img1_max - img1_min, 1e-8)
             img2[i] = (img2[i] - img2_min) / max(img2_max - img2_min, 1e-8)
 
-        print(f'img1.shape: {img1.shape}')
 
         return img1, img2
 
@@ -446,26 +445,6 @@ class MEt3R(Module):
             hr_feat = rearrange(hr_feat, "(b k) ... -> b k ...", k=2)
         images = rearrange(images, "(b k) ... -> b k ...", k=2)
         images = 2 * images - 1
-
-
-
-            
-        # Extract feature maps for the pair (assume B = 1 for simplicity)
-        feat1 = hr_feat[0, 0]  # shape: [C, H, W]
-        feat2 = hr_feat[0, 1]  # shape: [C, H, W]
-
-        # Normalize features along channel dimension
-        feat1 = F.normalize(feat1, dim=0)  # shape: [C, H, W]
-        feat2 = F.normalize(feat2, dim=0)
-
-        # Compute per-pixel cosine similarity
-        cos_sim_map = (feat1 * feat2).sum(dim=0)  # shape: [H, W]
-
-        # Compute mean cosine similarity over all pixels
-        mean_cos_sim = cos_sim_map.mean().item()
-
-        print(f"Mean cosine similarity between image 1 and 2: {mean_cos_sim:.4f}")
-
 
         # NOTE: Apply Backbone MASt3R/DUSt3R/RAFT to warp one view to the other and compute overlap masks
         if self.backbone == "raft":

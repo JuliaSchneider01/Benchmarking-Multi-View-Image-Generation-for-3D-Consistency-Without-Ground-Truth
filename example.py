@@ -16,7 +16,6 @@ def load_and_preprocess(image_path, img_size=256):
 # Replace with your own image paths
 img1 = load_and_preprocess("/home/schneiderju/3DCV/met3r/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004_hue.png")
 img2 = load_and_preprocess("/home/schneiderju/3DCV/met3r/FML_hard/photoconsistent-nvs/samples/000c3ab189999a83/samples/00000000/images/0004.png")
-print("Are tensors identical?", torch.equal(img1, img2))
 
 
 # Stack images: (views=2, channels, H, W)
@@ -56,83 +55,3 @@ with torch.no_grad():
 print(f'Geometric score: {score.mean().item()}')
 rgb_score = rest[0]
 print(f'Texture score: {rgb_score.mean().item()}')
-
-# Assuming projections is the last item returned
-projections = rest[-3]
-rgb_projections = rest[-4]
-
-projections = projections.cpu()  # move to CPU
-rgb_projections = rgb_projections.cpu()  # move to CPU
-
-
-import matplotlib.pyplot as plt
-# Assuming projections and rgb_projections are on CPU already
-# Extract first batch
-batch_proj = projections[0]  # shape: (2, 384, 256, 256)
-
-def get_rgb_img(proj_tensor):
-    # proj_tensor shape: (384, 256, 256)
-    rgb = proj_tensor[:3, :, :]  # take first 3 channels
-    rgb = rgb.permute(1, 2, 0).numpy()  # HWC
-    rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min() + 1e-8)
-    return rgb
-
-rgb_img_0 = get_rgb_img(batch_proj[0])
-rgb_img_1 = get_rgb_img(batch_proj[1])
-
-# For rgb_projections, check shape and convert to HWC for plotting
-# Let's assume shape is (2, 3, H, W)
-batch_rgb_proj = rgb_projections[0]  # shape (2, 3, H, W)
-
-dino_proj_img_0 = get_rgb_img(batch_rgb_proj[0])
-dino_proj_img_1 = get_rgb_img(batch_rgb_proj[1])
-
-# Plot all 4 images: projections and rgb_projections side by side
-fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-
-axes[0, 0].imshow(rgb_img_0)
-axes[0, 0].set_title("Projection 0 (RGB)")
-axes[0, 0].axis('off')
-
-axes[0, 1].imshow(rgb_img_1)
-axes[0, 1].set_title("Projection 1 (RGB)")
-axes[0, 1].axis('off')
-
-axes[1, 0].imshow(dino_proj_img_0)
-axes[1, 0].set_title("Projection 0 (DINO)")
-axes[1, 0].axis('off')
-
-axes[1, 1].imshow(dino_proj_img_1)
-axes[1, 1].set_title("Projection 1 (DINO)")
-axes[1, 1].axis('off')
-
-
-
-plt.tight_layout()
-plt.show()
-
-
-def to_numpy_img(tensor):
-    if hasattr(tensor, 'cpu'):
-        tensor = tensor.cpu()
-    img = tensor.numpy() if hasattr(tensor, 'numpy') else tensor
-    if img.shape[0] == 3 or img.shape[0] == 4:  # channels first -> convert to HWC
-        img = img.transpose(1, 2, 0)
-    return img
-
-print(f'remdered dino features shape: {rest[-3].shape}')
-
-img1 = to_numpy_img(rest[-2].squeeze(0))
-img2 = to_numpy_img(rest[-1].squeeze(0))
-
-# Plotting
-fig, axs = plt.subplots(1, 2, figsize=(15, 5))
-
-axs[0].imshow(img1)
-axs[0].set_title('pred1')
-axs[0].axis('off')
-
-axs[1].imshow(img2)
-axs[1].set_title('pred2')
-axs[1].axis('off')
-plt.show()
